@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id              Int       @id @default(autoincrement())
+  name            String
+  type            String    @default("INDIVIDUAL") // INDIVIDUAL, CLUB, ENTERPRISE
+  phone           String?
+  email           String?
+  contactInfo     String?
+  createdAt       DateTime  @default(now())
+  bookings        Booking[]
+  recurringGroups RecurringBookingGroup[]
+  blockBookings   BlockBooking[]
+  invoices        Invoice[]
+}
+
+model Venue {
+  id           Int       @id @default(autoincrement())
+  name         String
+  type         String
+  description  String?
+  capacity     Int       @default(1)
+  basePrice    Float
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  slots        VenueSlot[]
+  bookings     Booking[]
+  recurringGroups RecurringBookingGroup[]
+  blockBookings BlockBooking[]
+  maintenances VenueMaintenance[]
+}
+
+model VenueSlot {
+  id        Int     @id @default(autoincrement())
+  venueId   Int
+  venue     Venue   @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  dayOfWeek Int     // 0-6, 0=Sunday
+  startTime String  // "HH:mm"
+  endTime   String  // "HH:mm"
+  price     Float
+  isActive  Boolean @default(true)
+  @@unique([venueId, dayOfWeek, startTime, endTime])
+}
+
+model VenueMaintenance {
+  id        Int      @id @default(autoincrement())
+  venueId   Int
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model RecurringBookingGroup {
+  id              Int       @id @default(autoincrement())
+  customerId      Int
+  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  venueId         Int
+  venue           Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  dayOfWeek       Int
+  startTime       String
+  endTime         String
+  startDate       DateTime
+  endDate         DateTime
+  strategy        String    @default("SKIP_CONFLICT") // SKIP_CONFLICT, ROLLBACK_ALL
+  status          String    @default("CONFIRMED") // PENDING, CONFIRMED, PAID, CANCELLED, COMPLETED, PAUSED
+  unitPrice       Float
+  discountRate    Float     @default(1.0000)
+  totalAmount     Float
+  paidAmount      Float     @default(0)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  bookings        Booking[]
+  exceptions      RecurringException[]
+}
+
+model RecurringException {
+  id               Int                   @id @default(autoincrement())
+  groupId          Int
+  group            RecurringBookingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  originalDate     DateTime
+  action           String // PAUSED, RESCHEDULED, CANCELLED
+  newDate          DateTime?
+  newStartTime     String?
+  newEndTime       String?
+  reason           String?
+  createdAt        DateTime              @default(now())
+  relatedBookingId Int?
+  relatedBooking   Booking?              @relation("ExceptionBooking", fields: [relatedBookingId], references: [id])
+}
+
+model BlockBooking {
+  id           Int       @id @default(autoincrement())
+  customerId   Int
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  venueId      Int
+  venue        Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  name         String
+  dayOfWeek    Int       // -1=每天, 0-6
+  startTime    String
+  endTime      String
+  startDate    DateTime
+  endDate      DateTime
+  status       String    @default("CONFIRMED")
+  packagePrice Float
+  discountRate Float     @default(0.8500)
+  totalAmount  Float
+  paidAmount   Float     @default(0)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[]
+}
+
+model Booking {
+  id               Int                   @id @default(autoincrement())
+  customerId       Int
+  customer         Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  venueId          Int
+  venue            Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  bookingDate      DateTime
+  startTime        String
+  endTime          String
+  type             String                @default("SINGLE") // SINGLE, RECURRING, BLOCK
+  status           String                @default("CONFIRMED")
+  recurringGroupId Int?
+  recurringGroup   RecurringBookingGroup? @relation(fields: [recurringGroupId], references: [id])
+  blockBookingId   Int?
+  blockBooking     BlockBooking?         @relation(fields: [blockBookingId], references: [id])
+  unitPrice        Float
+  discountRate     Float                 @default(1.0000)
+  finalPrice       Float
+  paidAmount       Float                 @default(0)
+  invoiceId        Int?
+  invoice          Invoice?              @relation(fields: [invoiceId], references: [id])
+  notes            String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  exceptions       RecurringException[]  @relation("ExceptionBooking")
+
+  @@unique([venueId, bookingDate, startTime, endTime])
+}
+
+model Invoice {
+  id          Int       @id @default(autoincrement())
+  customerId  Int
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  invoiceNo   String    @unique
+  type        String    // SINGLE, RECURRING, BLOCK
+  totalAmount Float
+  paidAmount  Float     @default(0)
+  status      String    @default("UNPAID")
+  issuedAt    DateTime  @default(now())
+  paidAt      DateTime?
+  bookings    Booking[]
+  notes       String?
+}
